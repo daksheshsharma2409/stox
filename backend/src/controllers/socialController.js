@@ -4,7 +4,13 @@ const {
   listFollowers,
   listFollowing,
   getFeed,
+  getPost,
+  getSocialProfile,
   createPost,
+  deletePost,
+  getPostEngagement,
+  likePost,
+  unlikePost,
 } = require("../services/socialService");
 
 async function follow(req, res, next) {
@@ -82,6 +88,36 @@ async function listFeed(req, res, next) {
   }
 }
 
+async function getPostDetail(req, res, next) {
+  try {
+    const result = await getPost(req.user.userId, req.params.postId);
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function getProfile(req, res, next) {
+  try {
+    const result = await getSocialProfile(
+      req.user.userId,
+      req.params.userId,
+      req.validatedQuery,
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function addPost(req, res, next) {
   try {
     const post = await createPost(req.user.userId, req.body);
@@ -97,11 +133,72 @@ async function addPost(req, res, next) {
   }
 }
 
+async function removePost(req, res, next) {
+  try {
+    const result = await deletePost(req.user.userId, req.params.postId);
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function getEngagement(req, res, next) {
+  try {
+    const engagement = await getPostEngagement(
+      req.user.userId,
+      req.params.postId,
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: { engagement },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function like(req, res, next) {
+  try {
+    const engagement = await likePost(req.user.userId, req.params.postId);
+
+    return res.status(201).json({
+      success: true,
+      data: { engagement },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function unlike(req, res, next) {
+  try {
+    const engagement = await unlikePost(req.user.userId, req.params.postId);
+
+    return res.status(200).json({
+      success: true,
+      data: { engagement },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   follow,
   unfollow,
   getFollowers,
   getFollowing,
   listFeed,
+  getPostDetail,
+  getProfile,
   addPost,
+  deletePost: removePost,
+  getPostEngagement: getEngagement,
+  likePost: like,
+  unlikePost: unlike,
 };

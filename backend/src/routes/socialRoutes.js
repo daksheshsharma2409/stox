@@ -5,6 +5,8 @@ const validate = require("../middleware/validation");
 
 const {
   followParamsSchema,
+  postIdParamsSchema,
+  socialProfileParamsSchema,
   feedQuerySchema,
   createPostSchema,
 } = require("../validators/socialValidator");
@@ -20,11 +22,54 @@ router.get(
   socialController.listFeed,
 );
 
+router.get(
+  "/users/:userId",
+  authMiddleware,
+  validate(socialProfileParamsSchema, "params"),
+  validate(feedQuerySchema, "query", "validatedQuery"),
+  socialController.getProfile,
+);
+
+router.get(
+  "/posts/:postId",
+  authMiddleware,
+  validate(postIdParamsSchema, "params"),
+  socialController.getPostDetail,
+);
+
 router.post(
   "/posts",
   authMiddleware,
   validate(createPostSchema),
   socialController.addPost,
+);
+
+router.delete(
+  "/posts/:postId",
+  authMiddleware,
+  validate(postIdParamsSchema, "params"),
+  socialController.deletePost,
+);
+
+router.get(
+  "/posts/:postId/engagement",
+  authMiddleware,
+  validate(postIdParamsSchema, "params"),
+  socialController.getPostEngagement,
+);
+
+router.post(
+  "/posts/:postId/likes",
+  authMiddleware,
+  validate(postIdParamsSchema, "params"),
+  socialController.likePost,
+);
+
+router.delete(
+  "/posts/:postId/likes",
+  authMiddleware,
+  validate(postIdParamsSchema, "params"),
+  socialController.unlikePost,
 );
 
 router.get("/followers", authMiddleware, socialController.getFollowers);
