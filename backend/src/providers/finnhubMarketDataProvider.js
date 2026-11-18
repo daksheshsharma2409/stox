@@ -8,7 +8,6 @@ const {
 } = require("./marketDataHttp");
 const { createMarketDataError } = require("./marketDataErrors");
 const { mapFinnhubQuote } = require("./marketQuoteMappers");
-const { toProviderSymbol } = require("../services/symbolMappingService");
 
 const FINNHUB_RESOLUTIONS = Object.freeze({
   "1m": "1",
@@ -48,14 +47,12 @@ function createFinnhubMarketDataProvider(config = {}, { httpClient } = {}) {
 
     async getQuote(symbol) {
       requireApiKey();
-      const providerSymbol = toProviderSymbol(symbol, "finnhub");
-      const payload = await getData(client, "/quote", { symbol: providerSymbol });
-      return mapFinnhubQuote(payload, providerSymbol);
+      const payload = await getData(client, "/quote", { symbol });
+      return mapFinnhubQuote(payload, symbol);
     },
 
     async getHistoricalPrices(symbol, { interval, from, to }) {
       requireApiKey();
-      const providerSymbol = toProviderSymbol(symbol, "finnhub");
       const resolution = FINNHUB_RESOLUTIONS[interval];
       if (!resolution) {
         throw createMarketDataError(
@@ -67,7 +64,7 @@ function createFinnhubMarketDataProvider(config = {}, { httpClient } = {}) {
 
       const data = assertObject(
         await getData(client, "/stock/candle", {
-          symbol: providerSymbol,
+          symbol,
           resolution,
           from: Math.floor(from / 1000),
           to: Math.floor(to / 1000),
@@ -75,7 +72,7 @@ function createFinnhubMarketDataProvider(config = {}, { httpClient } = {}) {
       );
 
       if (data.s === "no_data") {
-        return { symbol: providerSymbol, assetClass: "STOCK", interval, prices: [] };
+        return { symbol, assetClass: "STOCK", interval, prices: [] };
       }
       if (
         data.s !== "ok" ||

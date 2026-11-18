@@ -8,7 +8,6 @@ const {
 } = require("./marketDataHttp");
 const { createMarketDataError } = require("./marketDataErrors");
 const { mapBinanceQuote } = require("./marketQuoteMappers");
-const { toProviderSymbol } = require("../services/symbolMappingService");
 
 const BINANCE_INTERVALS = new Set([
   "1m",
@@ -22,8 +21,25 @@ const BINANCE_INTERVALS = new Set([
   "1M",
 ]);
 
+function stripBinancePrefix(symbol) {
+  return symbol.replace(/^BINANCE:/i, "").toUpperCase();
+}
+
 function normalizeBinanceSymbol(symbol) {
-  return toProviderSymbol(symbol, "binance");
+  const value = stripBinancePrefix(symbol);
+  const slashPair = /^([A-Z0-9]{2,20})\/(USDT|BTC|ETH)$/.exec(value);
+  const normalized = slashPair ? `${slashPair[1]}${slashPair[2]}` : value;
+  // These quote assets match the conventions currently documented by Stox.
+  // The exchange remains authoritative for whether a syntactically valid pair
+  // is listed and trading.
+  if (!/^[A-Z0-9]{2,20}(?:USDT|BTC|ETH)$/.test(normalized)) {
+    throw createMarketDataError(
+      "The cryptocurrency symbol format is invalid.",
+      400,
+      "MARKET_DATA_INVALID_REQUEST",
+    );
+  }
+  return normalized;
 }
 
 function createBinanceMarketDataProvider(config, { httpClient } = {}) {

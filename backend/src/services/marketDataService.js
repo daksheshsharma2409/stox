@@ -24,15 +24,61 @@ const HISTORICAL_INTERVALS = new Set([
   "1w",
   "1M",
 ]);
-const {
-  normalizeSymbol,
-  normalizeAssetClass,
-  inferAssetClass,
-  resolveSymbol,
-} = require("./symbolMappingService");
+const ASSET_CLASSES = new Set(["STOCK", "CRYPTO"]);
+
+// A bare suffix is not enough: stock tickers such as GBTC, METH, and SOL also
+// end in a crypto quote asset. Treating any suffix as crypto would silently
+// route legitimate stock symbols to Binance. Requiring a non-empty base asset
+// on each side of a known quote asset avoids that class of misclassification.
+// Keep this aligned with the Binance adapter's supported quote assets. An
+// inferred crypto pair that the adapter rejects would be worse than leaving the
+// symbol as a stock.
+const CRYPTO_QUOTE_ASSETS = ["USDT", "BTC", "ETH"];
+const CRYPTO_PAIR_PATTERN = new RegExp(
+  `^([A-Z0-9]{2,20})(?:${CRYPTO_QUOTE_ASSETS.join("|")})$`,
+);
 
 function invalidRequest(message) {
   return createMarketDataError(message, 400, "MARKET_DATA_INVALID_REQUEST");
+}
+
+function inferAssetClass(normalizedSymbol) {
+  if (normalizedSymbol.startsWith("BINANCE:")) {
+    return "CRYPTO";
+  }
+
+  return CRYPTO_PAIR_PATTERN.test(normalizedSymbol) ? "CRYPTO" : "STOCK";
+}
+
+function normalizeAssetClass(value, symbol) {
+  const normalizedSymbol = String(symbol || "")
+    .trim()
+    .toUpperCase();
+  const inferredCrypto = inferAssetClass(normalizedSymbol) === "CRYPTO";
+  const assetClass = value
+    ? String(value).trim().toUpperCase()
+    : inferredCrypto
+      ? "CRYPTO"
+      : "STOCK";
+  if (!ASSET_CLASSES.has(assetClass)) {
+    throw createMarketDataError(
+      "Market data is not supported for this asset class.",
+      422,
+      "MARKET_DATA_UNSUPPORTED_ASSET_CLASS",
+    );
+  }
+  return assetClass;
+}
+
+function normalizeSymbol(symbol) {
+  if (typeof symbol !== "string" || !symbol.trim()) {
+    throw invalidRequest("A symbol is required.");
+  }
+  const value = symbol.trim().toUpperCase();
+  if (!/^[A-Z0-9._:/-]{1,30}$/.test(value)) {
+    throw invalidRequest("The symbol format is invalid.");
+  }
+  return value;
 }
 
 function isDecimalString(value) {
@@ -241,14 +287,13 @@ function createMarketDataService({ config, providers } = {}) {
      * Binance. Prices and changes are decimal strings.
      */
     async getQuote(symbol, options = {}) {
-      const resolved = await resolveSymbol(symbol, options);
-      const provider = adapterFor(resolved.assetClass);
-      const providerSymbol =
-        resolved.providerSymbol || resolved.canonicalSymbol;
+      const assetClass = normalizeAssetClass(options.assetClass, symbol);
+      const normalizedSymbol = normalizeSymbol(symbol);
+      const provider = adapterFor(assetClass);
       const result = await callAdapter(() =>
-        provider.getQuote(providerSymbol),
+        provider.getQuote(normalizedSymbol),
       );
-      return assertQuote(result, resolved.assetClass);
+      return assertQuote(result, assetClass);
     },
 
     /**
@@ -258,7 +303,8 @@ function createMarketDataService({ config, providers } = {}) {
      * longer than `limit` interval periods are rejected.
      */
     async getHistoricalPrices(symbol, options = {}) {
-      const resolved = await resolveSymbol(symbol, options);
+      const assetClass = normalizeAssetClass(options.assetClass, symbol);
+      const normalizedSymbol = normalizeSymbol(symbol);
       const { interval } = options;
       const from = Number(options.from);
       const to = Number(options.to);
@@ -282,11 +328,9 @@ function createMarketDataService({ config, providers } = {}) {
         );
       }
 
-      const provider = adapterFor(resolved.assetClass);
-      const providerSymbol =
-        resolved.providerSymbol || resolved.canonicalSymbol;
+      const provider = adapterFor(assetClass);
       const result = await callAdapter(() =>
-        provider.getHistoricalPrices(providerSymbol, {
+        provider.getHistoricalPrices(normalizedSymbol, {
           interval,
           from: numericFrom,
           to: numericTo,
@@ -295,8 +339,8 @@ function createMarketDataService({ config, providers } = {}) {
       );
       const normalized = assertHistoricalPrices(
         result,
-        resolved.canonicalSymbol,
-        resolved.assetClass,
+        normalizedSymbol,
+        assetClass,
         interval,
       );
       return { ...normalized, prices: normalized.prices.slice(0, limit) };
@@ -365,6 +409,4 @@ module.exports = {
   createMarketDataService,
   normalizeAssetClass,
   normalizeSymbol,
-  inferAssetClass,
-  resolveSymbol,
 };
